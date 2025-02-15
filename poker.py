@@ -9,10 +9,9 @@ QUEEN = 12
 KING = 13
 ACE = 14
 
-ORDERING = [2, 3, 4, 5, 6, 7, 8, 9, 10, JACK, QUEEN, KING, ACE]
 SUITS = ['heart', 'spade', 'club', 'diamond']
 DECK = []
-for n in ORDERING:
+for n in [2, 3, 4, 5, 6, 7, 8, 9, 10, JACK, QUEEN, KING, ACE]:
   for suit in SUITS:
     DECK.append((n, suit))
 
@@ -88,18 +87,80 @@ def sort_values_hi_to_lo(hand_values):
 def filter_by_suit(hand, suit):
   return [v for (v, s) in hand if s == suit]
 
-### RANDOM DEAL ###
-def deal(deck, num_cards_in_hand, num_cards_on_table):
-  random.shuffle(deck)
-  table = deck[0:num_cards_on_table]
-  hand = deck[num_cards_on_table:num_cards_on_table+num_cards_in_hand]
-  return (table, hand)
+def all_jokers(hand):
+  return all([c == JOKER for c in hand])
 
-### HAND MATCHING HELPERS ###
 def ntuple_value(ntuple):
-  if len(ntuple) == 0:
+  if ntuple == []:
     return 0
-  return ACE if all([c == JOKER for c in ntuple]) else [c for c in ntuple if c != JOKER][0]
+  return ACE if all_jokers(ntuple) else [c for c in ntuple if c != JOKER][0]
+
+def better_hicard(hand1, hand2):
+  if hand1 == hand2:
+    return hand2
+  if hand1 == []:
+    return hand2
+  if hand2 == []:
+    return hand1
+
+  if len(hand1) != len(hand2):
+    raise Exception('comparing different length hands')
+
+  for i in range(len(hand1)):
+    if hand1[i] == hand2[i]:
+      continue
+
+    if hand1[i] == JOKER: # Joker always resolves to Ace
+      return hand2 if hand2[i] == ACE else hand1
+    if hand2[i] == JOKER:
+      return hand1 if hand1[i] == ACE else hand2
+    return hand1 if hand1[i] > hand2[i] else hand2
+
+  raise Exception('end of hand comparison')
+
+def straight_hi_card(hand_values):
+  if hand_values == []:
+    return 0
+  if all_jokers(hand_values):
+    return ACE
+  if hand_values[-1] == ACE:
+    hand_values[-1] = 1
+  for i in range(len(hand_values)):
+    v = hand_values[i]
+    if v == JOKER: continue
+    return v + i
+  raise Exception('straight hi card failed')
+
+def better_straight(straight1, straight2):
+  if straight1 == straight2:
+    return straight2
+  if straight1 == []:
+    return straight2
+  if straight2 == []:
+    return straight1
+  def helper(hand1, hand2):
+    if len(hand1) != len(hand2):
+      raise Exception('straights are different lengths')
+    if hand1 == hand2:
+      return False
+    hicard1 = straight_hi_card(hand1)
+    hicard2 = straight_hi_card(hand2)
+    if hicard1 == hicard2 and hicard1 == JOKER:
+      return False
+    if hicard1 > hicard2:
+      return True
+    return better_straight(hand1[1:], hand2[1:])
+
+  if helper(straight1, straight2):
+    return straight1
+  else:
+    return straight2
+
+def better_n_ntuple(hand1, hand2):
+  return []
+
+#########################
+
 
 def get_ntuple(n, hand_values, num_jokers=0, hand_size=5):
   '''Return best ntuple in this hand. (n=2 for pair, n=3 for 3 of a kind, etc.
@@ -139,19 +200,6 @@ def get_all_ntuples(n, hand_values, num_jokers):
 
   return all_hands
 
-def straight_hi_card(hand_values):
-  if hand_values == []:
-    return 0
-  if all([c == JOKER for c in hand_values]):
-    return ACE
-  if hand_values[-1] == ACE:
-    hand_values[-1] = 1
-  for i in range(len(hand_values)):
-    v = hand_values[i]
-    if v == JOKER: continue
-    return v + i
-  raise Exception('straight hi card failed')
-
 def match_straight(hand_values, num_jokers, straight_to_match):
   straight = []
   for v in straight_to_match:
@@ -165,44 +213,14 @@ def match_straight(hand_values, num_jokers, straight_to_match):
       return []
   return straight
 
-def get_straight(k, hand_values, num_jokers=0):
-  possible_straights = list(reversed(
-    [[ACE] + ORDERING[:k-1]] + [ORDERING[i:i+k] for i in range(len(ORDERING)-k+1)]))
+def get_straight(hand_values, num_jokers=0, hand_size=5):
+  k = hand_size
+  possible_straights = [list(range(i, i-k, -1)) for i in range(14, k, -1)] + [list(range(k, 1, -1)) + [ACE]]
   for match in possible_straights:
     straight = match_straight([x for x in hand_values], num_jokers, match)
     if valid(straight):
-      return list(reversed(straight))
+      return straight
   return []
-
-def better_hand(flush1, flush2):
-  if flush1 == []:
-    return False
-  if flush2 == []:
-    return True
-
-  if len(flush1) != len(flush2):
-    raise Exception('different length flush')
-
-  for i in range(len(flush1)):
-    # joker tiebreaking
-    if flush1[i] == JOKER:
-      if flush2[i] == ACE:
-        return False
-      if flush2[i] == JOKER:
-        continue
-      else:
-        return True
-    if flush2[i] == JOKER:
-      if flush1[i] == ACE:
-        return True
-      else:
-        return False
-
-    if flush1[i] < flush2[i]:
-      return False
-    if flush1[i] > flush2[i]:
-      return True
-  return False
 
 def get_flush(hand_size, hand, num_jokers=0):
   best_flush = []
@@ -212,13 +230,9 @@ def get_flush(hand_size, hand, num_jokers=0):
     if len(match) + num_jokers < hand_size:
       continue
     match.sort(reverse=True)
-    # insert jokers
-    i = match.count(ACE)
-    match = match[:i] + [JOKER] * num_jokers + match[i:]
-    match = match[:hand_size]
-
-    if better_hand(match, best_flush):
-      best_flush = match
+    i = match.count(ACE)  # insert jokers after aces
+    match = (match[:i] + [JOKER] * num_jokers + match[i:])[:hand_size]
+    best_flush = better_hicard(match, best_flush)
 
   return best_flush
 
@@ -284,7 +298,6 @@ def get_3_ntuple(n1, n2, n3, hand_values, num_jokers, hand_size):
 
     best2 = []
     for group2 in all_n2:
-      # if ntuple_value(group2) > ntuple_value(best2):
       best2 = group2
 
       remaining_jokers_2 = remaining_jokers - best2.count(JOKER)
@@ -303,39 +316,35 @@ def get_3_ntuple(n1, n2, n3, hand_values, num_jokers, hand_size):
 
   return []
 
-def get_straight_flush(k, hand, num_jokers=0):
-  best_straight = []
+def get_straight_flush(hand, num_jokers=0, hand_size=5):
+  best = []
   for suit in SUITS:
-    filtered_hand = filter_by_suit(hand, suit)
-    next_straight = get_straight(k, filtered_hand, num_jokers)
-    if valid(next_straight) and (
-        straight_hi_card(next_straight) > straight_hi_card(best_straight)):
-      best_straight = next_straight
-  return best_straight
+    filtered = filter_by_suit(hand, suit)
+    next_straight = get_straight(filtered, num_jokers, hand_size)
+    best = better_straight(next_straight, best)
+  return best
 
-def get_royal_flush(k, hand, num_jokers=0):
-  best_straight_flush = get_straight_flush(k, hand, num_jokers)
+def get_royal_flush(hand, num_jokers=0, hand_size=5):
+  best_straight_flush = get_straight_flush(hand, num_jokers, hand_size)
   if straight_hi_card(best_straight_flush) == ACE:
     return best_straight_flush
   return []
 
-def get_flush_house(hand, num_jokers=0):
+def get_flush_2_ntuple(n1, n2, hand, num_jokers=0, hand_size=5):
+  best_hand = []
   for suit in SUITS:
-    filtered_hand = filter_by_suit(hand, suit)
-    next_flush_house = get_2_ntuple(3, 2, filtered_hand, num_jokers, hand_size=5)
-    if valid(next_flush_house):
-      # TODO get best flush house
-      return next_flush_house
-  return []
+    filtered = filter_by_suit(hand, suit)
+    next_flush_house = get_2_ntuple(n1, n2, filtered, num_jokers, hand_size)
+    best_hand = better_hicard(next_flush_house, best_hand)
+  return best_hand
 
 def get_nflush(hand_size, hand, num_jokers=0):
-  best_nflush = []
+  best_hand = []
   for suit in SUITS:
-    filtered_hand = filter_by_suit(hand, suit)
-    next_nflush = get_ntuple(hand_size, filtered_hand, num_jokers, hand_size)
-    if valid(next_nflush) and ntuple_value(next_nflush) > ntuple_value(best_nflush):
-      best_nflush = next_nflush
-  return best_nflush
+    filtered = filter_by_suit(hand, suit)
+    next_nflush = get_ntuple(hand_size, filtered, num_jokers, hand_size)
+    best_hand = better_hicard(next_nflush, best_hand)
+  return best_hand
 
 ### RUN SIMULATION ###
 def all_hands(hand, hand_size):
@@ -350,7 +359,7 @@ def all_hands(hand, hand_size):
     hands.append(Hand.TWO_PAIR)
   if valid(get_ntuple(3, hand_values, num_jokers, hand_size)):
     hands.append(Hand.THREE_OF_A_KIND)
-  if valid(get_straight(hand_size, hand_values, num_jokers)):
+  if valid(get_straight(hand_values, num_jokers, hand_size)):
     hands.append(Hand.STRAIGHT)
   if valid(get_2_ntuple(3, 2, hand_values, num_jokers, hand_size)):
     hands.append(Hand.FULL_HOUSE)
@@ -358,11 +367,9 @@ def all_hands(hand, hand_size):
     hands.append(Hand.FLUSH)
   if valid(get_ntuple(4, hand_values, num_jokers, hand_size)):
     hands.append(Hand.FOUR_OF_A_KIND)
-  if valid(get_straight_flush(hand_size, hand, num_jokers)):
+  if valid(get_straight_flush(hand, num_jokers, hand_size)):
     hands.append(Hand.STRAIGHT_FLUSH)
-#  if valid(get_royal_flush(hand_size, hand, num_jokers)):
-#    hands.append(Hand.ROYAL_FLUSH)
-  if valid(get_flush_house(hand, num_jokers)):
+  if valid(get_flush_ntuple(3, 2, hand, num_jokers, hand_size)):
     hands.append(Hand.FLUSH_HOUSE)
   if valid(get_nflush(5, hand, num_jokers)):
     hands.append(Hand.FLUSH_FIVE)
