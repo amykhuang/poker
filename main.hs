@@ -1,10 +1,11 @@
-import Control.Parallel.Strategies
+-- import Control.Parallel.Strategies
 import Data.List
 import Data.Maybe
+import Data.Ord
 import Options.Applicative
-import System.Random (mkStdGen)
-import System.Random.Shuffle (shuffle')
+import System.Random
 import Text.Printf
+import List.Shuffle (sample_)
 
 import Poker
 
@@ -70,13 +71,12 @@ flags = Flags
 -- Simulation --
 all_hands :: Int -> [Card] -> [HandType]
 all_hands handsize all_cards =
-  -- map (\(a, b) -> (a, fromJust b)) $
   map fst
   $ filter (isJust . snd)
   $ map (\(t, fn) -> (t, fn njokers handsize cards)) all_fns
   where all_fns = [(HighCard,      get_high_card_hand),
                    (Pair,          get_ntuple_hand 2),
-                   (TwoPair,       get_2_ntuple_hand 2 2), 
+                   (TwoPair,       get_2_ntuple_hand 2 2),
                    (ThreeofaKind,  get_ntuple_hand 3),
                    (Straight,      get_straight),
                    (Flush,         get_flush),
@@ -90,13 +90,16 @@ all_hands handsize all_cards =
                    (TwoTriplet,    get_2_ntuple_hand 3 3),
                    (ThreePair,     get_3_ntuple_hand 2 2 2),
                    (SixofaKind,    get_ntuple_hand 6),
+                   (FlushThreePair, get_flush_3_ntuple 2 2 2),
+                   (FlushFullHouse4_2, get_flush_2_ntuple 4 2),
+                   (FlushTwoTriplet, get_flush_2_ntuple 3 3),
                    (FlushSix,      get_flush_ntuple 6)]
         njokers = count_jokers all_cards
         cards = sortBy (flip compare) $ remove_jokers all_cards
 
 simulate_one_hand :: Int -> Int -> [Card] -> Int -> [HandType]
-simulate_one_hand handsize ndraw decks seed = all_hands handsize $ take ndraw shuffled
-  where shuffled = shuffle' decks (length decks) (mkStdGen seed)
+simulate_one_hand handsize ndraw decks seed = all_hands handsize shuffled
+  where shuffled = sample_ ndraw decks (mkStdGen seed)
 
 simulate_n_hands :: Int -> Int -> Int -> [Card] -> [HandType]
 simulate_n_hands nruns handsize ndraw decks =
@@ -112,17 +115,20 @@ to_float :: Int -> Float
 to_float i = fromIntegral i :: Float
 
 print_histogram :: Int -> [HandType] -> String
-print_histogram nruns = unlines
-  . map (\(count, t) -> printf "%s: %.4f"
-                        (show t) (100 * (to_float count) / (to_float nruns)))
-  . reverse . sort . map (\ls -> (length ls, head ls)) . group . sort
+print_histogram nruns hand_types =
+    unlines
+  $ map (\(t, c) -> printf "%s: %.4f" (show t) (100 * (to_float c) / (to_float nruns)))
+  $ sortOn (Down . snd)
+  $ filter ((/= 0) . snd)
+  $ map (\t -> (t, count t hand_types)) [HighCard ..]
+  where count x = length . filter (==x)
 
 main :: IO ()
 main = do
+  -- flags
   all_flags <- execParser (info (flags <**> helper) (fullDesc <> header "poker"))
   let Flags ndecks njokers hand_size ncards_in_hand ncards_on_table runs = all_flags
   putStr $ print_flags all_flags
-
   -- run
   let deck = [Card v s | v <- [Two ..], s <- [Club ..]]
   let decks = (concat(take ndecks (repeat deck))) ++ (take njokers $ repeat (Joker NoValue))

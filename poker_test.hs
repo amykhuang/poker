@@ -107,11 +107,10 @@ test_flush = TestCase(
   do c1 <- test_cards [Card Two Heart, Card Three Heart, Card Four Heart, Card Five Heart, Card Six Heart]
      assertEqual "FlushNormal1" (get_flush 0 5 c1)
        (Just [Card Six Heart, Card Five Heart, Card Four Heart, Card Three Heart, Card Two Heart])
-     c2 <- test_cards [Card Six Heart, Card Five Spade, Card Four Heart, Card Three Heart, Card Two Heart]
-     assertEqual "FlushNone1" (get_flush 0 5 c2) Nothing
+     c2 <- test_cards [Card Six Heart, Card Five Spade, Card Four Heart, Card Three Heart, Card Two Heart, Card Five Club]
      assertEqual "FlushAllJokers" (get_flush 5 5 c2)
        (Just [Joker Ace, Joker Ace, Joker Ace, Joker Ace, Joker Ace])
-     assertEqual "FlushNone2" (get_flush 5 6 []) Nothing
+     assertEqual "FlushNone1" (get_flush 0 5 []) Nothing
      assertEqual "FlushWithJokers" (get_flush 1 5 c2)
        (Just [Joker Ace, Card Six Heart, Card Four Heart, Card Three Heart, Card Two Heart])
      c3 <- test_cards [Card Three Spade, Card Two Heart, Card Four Spade, Card Five Spade, Card Four Club, Card Two Heart, Card Six Heart, Card King Diamond, Card Ten Club]

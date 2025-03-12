@@ -369,7 +369,7 @@ def all_hands(hand, hand_size):
     hands.append(Hand.FOUR_OF_A_KIND)
   if valid(get_straight_flush(hand, num_jokers, hand_size)):
     hands.append(Hand.STRAIGHT_FLUSH)
-  if valid(get_flush_ntuple(3, 2, hand, num_jokers, hand_size)):
+  if valid(get_flush_2_ntuple(3, 2, hand, num_jokers, hand_size)):
     hands.append(Hand.FLUSH_HOUSE)
   if valid(get_nflush(5, hand, num_jokers)):
     hands.append(Hand.FLUSH_FIVE)
@@ -452,11 +452,11 @@ def print_histogram(histogram):
 
 if __name__ == "__main__":
   sample_size = 1000000
-  num_decks = 5
-  num_cards_in_hand = 6
-  num_cards_on_table = 6
-  num_jokers = 10
-  hand_size = 6
+  num_decks = 1
+  num_cards_in_hand = 2
+  num_cards_on_table = 5
+  num_jokers = 0
+  hand_size = 5
 
   print("Number of runs: {}".format(sample_size))
   print("Decks:          {}".format(num_decks))
@@ -465,7 +465,6 @@ if __name__ == "__main__":
   print("Jokers:         {}".format(num_jokers))
   print("Hand size:      {}".format(hand_size))
   print("")
+
   print_histogram(
     compute_all(sample_size, num_decks, num_cards_in_hand, num_cards_on_table, num_jokers, hand_size))
-
-

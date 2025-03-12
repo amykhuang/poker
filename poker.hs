@@ -23,7 +23,8 @@ type Hand = [Card]
 data HandType = HighCard | Pair | TwoPair | ThreeofaKind | Straight | Flush |
                 FullHouse | FourofaKind | StraightFlush | FiveofaKind |
                 FlushHouse | FlushFive | TwoTriplet | FullHouse4_2 | ThreePair |
-                SixofaKind | FlushSix
+                SixofaKind | FlushThreePair | FlushFullHouse4_2 | FlushTwoTriplet |
+                FlushSix
   deriving (Read, Show, Enum, Eq, Ord)  
 
 -- Helper functions -- 
@@ -49,12 +50,6 @@ count_jokers = length . filter is_joker
 remove_jokers :: [Card] -> [Card]
 remove_jokers  = filter (not . is_joker)
 
-fill_ntuple_with_jokers :: Int -> [Card] -> [Card]
-fill_ntuple_with_jokers n [] = replicate n (Joker Ace)
-fill_ntuple_with_jokers n (cards@((Card v _):_)) =
-  cards ++ (replicate (n - (length cards)) (Joker v))
-fill_ntuple_with_jokers _ _ = error "ntuple had jokers"
-
 subtract_hand :: Hand -> Int -> [Card] -> (Int, [Card])
 subtract_hand used njokers cards = (njokers - (count_jokers used),
                                     cards \\ (remove_jokers used))
@@ -76,7 +71,7 @@ take_card_by_value v cards = case find (has_value v) cards of
   Nothing -> (cards, Nothing)
 
 split_suits :: [Card] -> [[Card]]
-split_suits cards = [filter (has_suit suit) cards | suit <- [Club, Diamond, Heart, Spade]]
+split_suits cards = [filter (has_suit suit) cards | suit <- [Club ..]]
 
 best_hand :: [Hand] -> Maybe Hand
 best_hand [] = Nothing
@@ -89,6 +84,12 @@ first_hand (hand:_) = Just hand
 insert_jokers_in_order :: Int -> [Card] -> [Card]
 insert_jokers_in_order n cards =
   sortBy (flip compare) $ cards ++ (take n (repeat (Joker Ace)))
+
+fill_ntuple_with_jokers :: Int -> [Card] -> [Card]
+fill_ntuple_with_jokers n [] = replicate n (Joker Ace)
+fill_ntuple_with_jokers n (cards@((Card v _):_)) =
+  cards ++ (replicate (n - (length cards)) (Joker v))
+fill_ntuple_with_jokers _ _ = error "ntuple had jokers"
 
 insert_joker_tuple :: [[Card]] -> [[Card]]
 insert_joker_tuple [] = []
@@ -103,7 +104,13 @@ append_to_maybe h1 (Just h2) = Just (h1 ++ h2)
 append_to_maybe _ Nothing = Nothing
 
 -- Hand identification --
--- All functions assume cards are sorted high to low.
+-- Assume that:
+-- - cards are sorted high to low;
+-- - number of cards (plus jokers) is at least the hand size.
+
+get_high_card_hand :: Int -> Int -> [Card] -> Maybe Hand
+get_high_card_hand njokers handsize cards =
+  Just (take handsize $ insert_jokers_in_order njokers cards)
 
 add_kickers :: [Card] -> Int -> Int -> [Card] -> Hand
 add_kickers used njokers handsize cards =
@@ -118,15 +125,10 @@ all_ntuples n njokers _ =
   . insert_joker_tuple
   . groupBy (<=)
 
-get_high_card_hand :: Int -> Int -> [Card] -> Maybe Hand
-get_high_card_hand njokers handsize cards
-  | length cards < handsize = Nothing
-  | otherwise = Just (add_kickers [] njokers handsize cards)
-
 get_ntuple_hand :: Int -> Int -> Int -> [Card] -> Maybe Hand
 get_ntuple_hand n njokers handsize cards = case all_ntuples n njokers handsize cards of
     [] -> Nothing
-    (hand:_) -> Just (add_kickers hand njokers handsize cards)
+    (hand:_) -> Just hand --(add_kickers hand njokers handsize cards)
 
 get_2_ntuple_hand :: Int -> Int -> Int -> Int -> [Card] -> Maybe Hand
 get_2_ntuple_hand n1 n2 njokers handsize cards = first_hand
@@ -155,9 +157,10 @@ get_straight njokers handsize cards =
     [[handtype, pred handtype .. Two] ++ [Ace] | handtype <- [Ace, King .. Two]]
 
 get_flush :: Int -> Int -> [Card] -> Maybe Hand
-get_flush njokers handsize =
+get_flush njokers handsize = 
     best_hand
   . mapMaybe (get_high_card_hand njokers handsize)
+  . filter ((>= handsize - njokers) . length)
   . split_suits
 
 get_flush_straight :: Int -> Int -> [Card] -> Maybe Hand
@@ -167,21 +170,17 @@ get_flush_straight njokers handsize =
   . mapMaybe (get_straight njokers handsize)
   . split_suits
 
--- these should potentially return kickers? currently handsize is unused
 get_flush_ntuple :: Int -> Int -> Int -> [Card] -> Maybe Hand
-get_flush_ntuple n njokers _ =
-    best_hand
-  . mapMaybe (get_ntuple_hand n njokers n)
-  . split_suits
+get_flush_ntuple n njokers handsize cards
+  | n /= handsize = Nothing  -- don't allow flush hands that are less than hand size
+  | otherwise = best_hand $  mapMaybe (get_ntuple_hand n njokers n) $ split_suits cards
 
 get_flush_2_ntuple :: Int -> Int -> Int -> Int -> [Card] -> Maybe Hand
-get_flush_2_ntuple n1 n2 njokers _ =
-    best_hand
-  . mapMaybe (get_2_ntuple_hand n1 n2 njokers (n1+n2))
-  . split_suits
+get_flush_2_ntuple n1 n2 njokers handsize cards
+  | n1 + n2 /= handsize = Nothing
+  | otherwise = (best_hand . mapMaybe (get_2_ntuple_hand n1 n2 njokers (n1+n2)) . split_suits) cards
 
 get_flush_3_ntuple :: Int -> Int -> Int -> Int -> Int -> [Card] -> Maybe Hand
-get_flush_3_ntuple n1 n2 n3 njokers _ =
-    best_hand
-  . mapMaybe (get_3_ntuple_hand n1 n2 n3 njokers (n1+n2+n3))
-  . split_suits
+get_flush_3_ntuple n1 n2 n3 njokers handsize cards
+  | n1 + n2 + n3 /= handsize = Nothing
+  | otherwise = (best_hand . mapMaybe (get_3_ntuple_hand n1 n2 n3 njokers (n1+n2+n3)) . split_suits) cards
